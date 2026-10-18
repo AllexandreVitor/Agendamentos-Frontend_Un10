@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest 
     steps:
       - name: Checkout repository # Baixar repo
-        uses: actions/checkout@v6 
+        uses: actions/checkout@v4 
         with:
           fetch-depth: 0 # pega historico completo
 
@@ -52,7 +52,37 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Run Semgrep
         uses: semgrep scan --config p/javascript
+
+  # ======================
+  # 3. Qualidade e Validação de Código
+  # ======================
+  quality:
+    name: 3. Code Quality & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: ubuntu-latest
+
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: cpm ci
+
+      - name: Validação de Lint (Oxlint)
+        run: npm run lint
+
+      - name: Checagem estática de tipos (TypeScript)
+        run: npm run typecheck
+
+      - name: Build da aplicação
+        run: npx vite build
+
