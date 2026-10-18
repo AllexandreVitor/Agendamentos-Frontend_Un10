@@ -14,3 +14,21 @@ permissions:
   contents: read
 
 jobs:
+
+  # ======================
+  # 1. Secret Scanning
+  # ======================
+  gitleaks:
+    name: 1. Secret Scanning
+    runs-on: ubuntu-latest 
+    steps:
+      - name: Checkout repository # Baixar repo
+        uses: actions/checkout@v6 
+        with:
+          fetch-depth: 0 # pega historico completo
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v3 # executa action do gitleak, ferramenta que procura padroes e credenciais e outros segredos do códiigo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
