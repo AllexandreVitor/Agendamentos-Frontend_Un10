@@ -75,7 +75,7 @@ jobs:
           cache: npm
 
       - name: Instalar dependências
-        run: cpm ci
+        run: npm ci
 
       - name: Validação de Lint (Oxlint)
         run: npm run lint
