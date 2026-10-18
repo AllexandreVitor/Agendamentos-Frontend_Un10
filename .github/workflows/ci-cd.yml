@@ -55,7 +55,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Semgrep
-        uses: semgrep scan --config p/javascript
+        run: semgrep scan --config p/javascript
 
   # ======================
   # 3. Qualidade e Validação de Código
