@@ -1,0 +1,175 @@
+name: Ci/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Princípio do menor privilégio
+permissions:
+  contents: read
+
+jobs:
+
+  # ======================
+  # 1. Secret Scanning
+  # ======================
+  gitleaks:
+    name: 1. Secret Scanning
+    runs-on: ubuntu-latest 
+    steps:
+      - name: Checkout repository # Baixar repo
+        uses: actions/checkout@v4 
+        with:
+          fetch-depth: 0 # pega historico completo
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v3 # executa action do gitleak, ferramenta que procura padroes e credenciais e outros segredos do códiigo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ======================
+  # 2. SAST
+  # ======================
+  # Analisa o código-fonte da aplicação em busca
+  # de possíveis vulnerabilidades de segurança
+  # sem precisar executar a aplicação
+
+  sast:
+    name: 2. SAST com Semgrep
+    runs-on: ubuntu-latest
+
+    permissions:
+       contents: read # Menor privilégio
+
+    container:
+      image: semgrep/semgrep
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        run: semgrep scan --config p/javascript
+
+  # ======================
+  # 3. Qualidade e Validação de Código
+  # ======================
+  quality:
+    name: 3. Code Quality & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Validação de Lint (Oxlint)
+        run: npm run lint
+
+      - name: Checagem estática de tipos (TypeScript)
+        run: npm run typecheck
+
+      - name: Build da aplicação
+        run: npx vite build
+
+  # ======================
+  # 4. Teste Container Docker
+  # ======================
+  docker-test:
+    name: 4. Build & Teste Imagem Docker
+    needs: [ gitleaks, sast, quality ]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Construir imagem teste local
+        run: |
+          docker build -t frontend-test:local .
+
+      - name: Iniciar container de teste
+        run: |
+          docker run -d --name test-container -p 8080:80 frontend-test:local
+
+      - name: Validar saúde da aplicação
+        run: |
+          for i in $(seq 1 10); do
+            if curl --fail -sS http://localhost:8080/healthz; then
+              break
+            fi
+            
+            if [ "$i" -eq 10 ]; then
+              echo "A aplicação não ficou saudável a tempo."
+              docker logs test-container
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          curl --fail -sS http://localhost:8080/ \
+            | grep -i "<!doctype html>"
+
+      - name: Limpeza do container de teste
+        if: always()
+        run: |
+          docker rm -f test-container || true
+
+  # ======================
+  # 5. Publicação da Imagem no Docker Hub
+  # ======================
+  docker-publish:
+    name: 5. Build & Publicação no Docker Hub
+    needs: docker-test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Autenticar no Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Gerar tags e metadados para a imagem
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/agendamentos-frontend
+          tags: |
+            type=raw,value=latest,enable=true
+            type=sha,format=short,prefix=sha-
+            type=ref,event=branch
+
+      - name: Construir e enviar imagem para o Docker Hub com cache
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
