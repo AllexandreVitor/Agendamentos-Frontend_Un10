@@ -33,3 +33,26 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # ======================
+  # 2. SAST
+  # ======================
+  # Analisa o código-fonte da aplicação em busca
+  # de possíveis vulnerabilidades de segurança
+  # sem precisar executar a aplicação
+
+  sast:
+    name: 2. SAST com Semgrep
+    runs-on: ubuntu-latest
+
+    permissions:
+       contents: read # Menor privilégio
+
+    container:
+      image: semgrep/semgrep
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Semgrep
+        uses: semgrep scan --config p/javascript
