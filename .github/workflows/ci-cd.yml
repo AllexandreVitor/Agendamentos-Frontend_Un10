@@ -1,0 +1,16 @@
+name: Ci/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Princípio do menor privilégio
+permissions:
+  contents: read
+
+jobs:
